@@ -504,6 +504,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"kubevirt.io/api/core/v1.SEVMeasurementInfo":                                                      schema_kubevirtio_api_core_v1_SEVMeasurementInfo(ref),
 		"kubevirt.io/api/core/v1.SEVPlatformInfo":                                                         schema_kubevirtio_api_core_v1_SEVPlatformInfo(ref),
 		"kubevirt.io/api/core/v1.SEVPolicy":                                                               schema_kubevirtio_api_core_v1_SEVPolicy(ref),
+		"kubevirt.io/api/core/v1.SEVSNP":                                                                  schema_kubevirtio_api_core_v1_SEVSNP(ref),
 		"kubevirt.io/api/core/v1.SEVSecretOptions":                                                        schema_kubevirtio_api_core_v1_SEVSecretOptions(ref),
 		"kubevirt.io/api/core/v1.SEVSessionOptions":                                                       schema_kubevirtio_api_core_v1_SEVSessionOptions(ref),
 		"kubevirt.io/api/core/v1.SMBiosConfiguration":                                                     schema_kubevirtio_api_core_v1_SMBiosConfiguration(ref),
@@ -18629,20 +18630,23 @@ func schema_kubevirtio_api_core_v1_CustomBlockSize(ref common.ReferenceCallback)
 				Properties: map[string]spec.Schema{
 					"logical": {
 						SchemaProps: spec.SchemaProps{
-							Default: 0,
-							Type:    []string{"integer"},
-							Format:  "int32",
+							Type:   []string{"integer"},
+							Format: "int32",
 						},
 					},
 					"physical": {
 						SchemaProps: spec.SchemaProps{
-							Default: 0,
-							Type:    []string{"integer"},
-							Format:  "int32",
+							Type:   []string{"integer"},
+							Format: "int32",
+						},
+					},
+					"discardGranularity": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"integer"},
+							Format: "int32",
 						},
 					},
 				},
-				Required: []string{"logical", "physical"},
 			},
 		},
 	}
@@ -22311,11 +22315,17 @@ func schema_kubevirtio_api_core_v1_LaunchSecurity(ref common.ReferenceCallback) 
 							Ref:         ref("kubevirt.io/api/core/v1.SEV"),
 						},
 					},
+					"snp": {
+						SchemaProps: spec.SchemaProps{
+							Description: "AMD SEV-SNP flags defined by the SEV-SNP specifications.",
+							Ref:         ref("kubevirt.io/api/core/v1.SEVSNP"),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"kubevirt.io/api/core/v1.SEV"},
+			"kubevirt.io/api/core/v1.SEV", "kubevirt.io/api/core/v1.SEVSNP"},
 	}
 }
 
@@ -24335,6 +24345,16 @@ func schema_kubevirtio_api_core_v1_SEVPolicy(ref common.ReferenceCallback) commo
 						},
 					},
 				},
+			},
+		},
+	}
+}
+
+func schema_kubevirtio_api_core_v1_SEVSNP(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 			},
 		},
 	}
@@ -30353,6 +30373,13 @@ func schema_kubevirtio_api_instancetype_v1beta1_PreferenceRequirements(ref commo
 							Ref:         ref("kubevirt.io/api/instancetype/v1beta1.MemoryPreferenceRequirement"),
 						},
 					},
+					"architecture": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Required Architecture of the VM referencing this preference",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},
@@ -30757,6 +30784,12 @@ func schema_kubevirtio_api_instancetype_v1beta1_VirtualMachineInstancetypeSpec(r
 							Format:      "",
 						},
 					},
+					"ioThreads": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Optionally specifies the IOThreads options to be used by the instancetype.",
+							Ref:         ref("kubevirt.io/api/core/v1.DiskIOThreads"),
+						},
+					},
 					"launchSecurity": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Optionally defines the LaunchSecurity to be used by the instancetype.",
@@ -30784,7 +30817,7 @@ func schema_kubevirtio_api_instancetype_v1beta1_VirtualMachineInstancetypeSpec(r
 			},
 		},
 		Dependencies: []string{
-			"kubevirt.io/api/core/v1.GPU", "kubevirt.io/api/core/v1.HostDevice", "kubevirt.io/api/core/v1.LaunchSecurity", "kubevirt.io/api/instancetype/v1beta1.CPUInstancetype", "kubevirt.io/api/instancetype/v1beta1.MemoryInstancetype"},
+			"kubevirt.io/api/core/v1.DiskIOThreads", "kubevirt.io/api/core/v1.GPU", "kubevirt.io/api/core/v1.HostDevice", "kubevirt.io/api/core/v1.LaunchSecurity", "kubevirt.io/api/instancetype/v1beta1.CPUInstancetype", "kubevirt.io/api/instancetype/v1beta1.MemoryInstancetype"},
 	}
 }
 
@@ -30975,6 +31008,13 @@ func schema_kubevirtio_api_instancetype_v1beta1_VirtualMachinePreferenceSpec(ref
 							Description: "PreferSpreadSocketToCoreRatio defines the ratio to spread vCPUs between cores and sockets, it defaults to 2.",
 							Type:        []string{"integer"},
 							Format:      "int64",
+						},
+					},
+					"preferredArchitecture": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PreferredArchitecture defines a prefeerred architecture for the VirtualMachine",
+							Type:        []string{"string"},
+							Format:      "",
 						},
 					},
 				},

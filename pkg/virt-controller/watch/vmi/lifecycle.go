@@ -181,7 +181,7 @@ func (c *Controller) sync(vmi *virtv1.VirtualMachineInstance, pod *k8sv1.Pod, da
 	if !isTempPod(pod) && controller.IsPodReady(pod) {
 		newAnnotations := map[string]string{descheduler.EvictOnlyAnnotation: ""}
 		maps.Copy(newAnnotations, c.netAnnotationsGenerator.GenerateFromActivePod(vmi, pod))
-		patchedPod, err := c.syncPodAnnotations(pod, newAnnotations)
+		patchedPod, err := controller.SyncPodAnnotations(c.clientset, pod, newAnnotations)
 		if err != nil {
 			return common.NewSyncError(err, controller.FailedPodPatchReason), pod
 		}
@@ -496,6 +496,22 @@ func (c *Controller) updateStatus(vmi *virtv1.VirtualMachineInstance, pod *k8sv1
 		return fmt.Errorf("unknown vmi phase %v", vmi.Status.Phase)
 	}
 
+	if vmiCopy.IsMarkedForEviction() {
+		if !conditionManager.HasConditionWithStatus(vmiCopy, virtv1.VirtualMachineInstanceEvictionRequested, k8sv1.ConditionTrue) {
+			now := v1.Now()
+			conditionManager.UpdateCondition(vmiCopy, &virtv1.VirtualMachineInstanceCondition{
+				Type:               virtv1.VirtualMachineInstanceEvictionRequested,
+				Status:             k8sv1.ConditionTrue,
+				Reason:             virtv1.VirtualMachineInstanceReasonEvictionRequested,
+				Message:            "VMI is marked for eviction",
+				LastProbeTime:      now,
+				LastTransitionTime: now,
+			})
+		}
+	} else {
+		conditionManager.RemoveCondition(vmiCopy, virtv1.VirtualMachineInstanceEvictionRequested)
+	}
+
 	// VMI is owned by virt-handler, so patch instead of update
 	if vmi.IsRunning() || vmi.IsScheduled() {
 		patchSet := prepareVMIPatch(vmi, vmiCopy)
@@ -664,13 +680,18 @@ func (c *Controller) syncDynamicAnnotationsAndLabelsToPod(vmi *virtv1.VirtualMac
 		}
 	}
 
+	dynamicLabels := []string{virtv1.NodeNameLabel, virtv1.OutdatedLauncherImageLabel}
+	dynamicLabels = append(dynamicLabels, c.additionalLauncherLabelsSync...)
+	dynamicAnnotations := []string{descheduler.EvictPodAnnotationKeyAlpha, descheduler.EvictPodAnnotationKeyAlphaPreferNoEviction}
+	dynamicAnnotations = append(dynamicAnnotations, c.additionalLauncherAnnotationsSync...)
+
 	syncMap(
-		[]string{virtv1.NodeNameLabel, virtv1.OutdatedLauncherImageLabel},
+		dynamicLabels,
 		vmi.Labels, newPodLabels, pod.ObjectMeta.Labels, "labels",
 	)
 
 	syncMap(
-		[]string{descheduler.EvictPodAnnotationKeyAlpha, descheduler.EvictPodAnnotationKeyAlphaPreferNoEviction},
+		dynamicAnnotations,
 		vmi.Annotations, newPodAnnotations, pod.ObjectMeta.Annotations, "annotations",
 	)
 
@@ -692,30 +713,6 @@ func (c *Controller) syncDynamicAnnotationsAndLabelsToPod(vmi *virtv1.VirtualMac
 	}
 
 	return updatedPod, nil
-}
-
-func (c *Controller) syncPodAnnotations(pod *k8sv1.Pod, newAnnotations map[string]string) (*k8sv1.Pod, error) {
-	patchSet := patch.New()
-	for key, newValue := range newAnnotations {
-		if podAnnotationValue, keyExist := pod.Annotations[key]; !keyExist || podAnnotationValue != newValue {
-			patchSet.AddOption(
-				patch.WithAdd(fmt.Sprintf("/metadata/annotations/%s", patch.EscapeJSONPointer(key)), newValue),
-			)
-		}
-	}
-	if patchSet.IsEmpty() {
-		return pod, nil
-	}
-	patchBytes, err := patchSet.GeneratePayload()
-	if err != nil {
-		return pod, fmt.Errorf("failed to generate patch payload: %w", err)
-	}
-	patchedPod, err := c.clientset.CoreV1().Pods(pod.Namespace).Patch(context.Background(), pod.Name, types.JSONPatchType, patchBytes, v1.PatchOptions{})
-	if err != nil {
-		log.Log.Object(pod).Errorf("failed to sync pod annotations during sync: %v", err)
-		return nil, err
-	}
-	return patchedPod, nil
 }
 
 func (c *Controller) setLauncherContainerInfo(vmi *virtv1.VirtualMachineInstance, curPodImage string) *virtv1.VirtualMachineInstance {
@@ -860,7 +857,7 @@ func checkForContainerImageError(pod *k8sv1.Pod) common.SyncError {
 		}
 		reason := containerStatus.State.Waiting.Reason
 		if reason == controller.ErrImagePullReason || reason == controller.ImagePullBackOffReason {
-			return common.NewSyncError(fmt.Errorf(containerStatus.State.Waiting.Message), reason)
+			return common.NewSyncError(fmt.Errorf("%s", containerStatus.State.Waiting.Message), reason)
 		}
 	}
 	return nil
