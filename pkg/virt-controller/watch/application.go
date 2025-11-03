@@ -337,7 +337,7 @@ func Execute() {
 
 	if err := app.kubeVirtInformer.SetWatchErrorHandler(func(r *cache.Reflector, err error) {
 		apiHealthVersion.Clear()
-		cache.DefaultWatchErrorHandler(r, err)
+		cache.DefaultWatchErrorHandler(context.TODO(), r, err)
 	}); err != nil {
 		golog.Fatalf("failed to set the watch error handler: %v", err)
 	}
@@ -777,6 +777,8 @@ func (vca *VirtControllerApp) initPool() {
 		vca.vmiInformer,
 		vca.vmInformer,
 		vca.poolInformer,
+		vca.persistentVolumeClaimInformer,
+		vca.dataVolumeInformer,
 		vca.controllerRevisionInformer,
 		recorder,
 		controller.BurstReplicas)

@@ -42,6 +42,7 @@ const (
 	DownwardMetricsFeatureGate = "DownwardMetrics"
 	Root                       = "Root"
 	WorkloadEncryptionSEV      = "WorkloadEncryptionSEV"
+	WorkloadEncryptionTDX      = "WorkloadEncryptionTDX"
 	VSOCKGate                  = "VSOCK"
 	// KubevirtSeccompProfile indicate that Kubevirt will install its custom profile and
 	// user can tell Kubevirt to use it
@@ -72,6 +73,7 @@ const (
 
 	// Owner: @Barakmor1
 	// Alpha: v1.6.0
+	// Beta: v1.7.0
 	//
 	// ImageVolume The ImageVolume FG in KubeVirt uses Kubernetes ImageVolume FG to eliminate
 	// the need for an extra container for containerDisk, improving security by avoiding
@@ -125,6 +127,8 @@ const (
 	// Requires `autoattachGraphicsDevice` to be true or unset. Alpha feature, defaults unchanged.
 	// Owner: @dasionov
 	// Alpha: v1.6.0
+	// Beta: v1.7.0
+	//
 	VideoConfig = "VideoConfig"
 
 	// Owner: @varunrsekar
@@ -138,10 +142,18 @@ const (
 	//
 	// PasstIPStackMigration enables seamless migration with passt network binding.
 	PasstIPStackMigration = "PasstIPStackMigration"
+
+	// MigrationPriorityQueue enables controllers to assign priorities to migrations,
+	// ensuring system-initiated migrations (e.g., node drains, upgrades) take precedence
+	// over user-initiated ones (e.g., hot plug operations).
+	// Owner: sig-compute / @fossedihelm
+	// Alpha: v1.7.0
+	//
+	MigrationPriorityQueue = "MigrationPriorityQueue"
 )
 
 func init() {
-	RegisterFeatureGate(FeatureGate{Name: ImageVolume, State: Alpha})
+	RegisterFeatureGate(FeatureGate{Name: ImageVolume, State: Beta})
 	RegisterFeatureGate(FeatureGate{Name: ExpandDisksGate, State: Alpha})
 	RegisterFeatureGate(FeatureGate{Name: CPUManager, State: Alpha})
 	RegisterFeatureGate(FeatureGate{Name: IgnitionGate, State: Alpha})
@@ -155,8 +167,9 @@ func init() {
 	RegisterFeatureGate(FeatureGate{Name: DownwardMetricsFeatureGate, State: Alpha})
 	RegisterFeatureGate(FeatureGate{Name: Root, State: Alpha})
 	RegisterFeatureGate(FeatureGate{Name: WorkloadEncryptionSEV, State: Alpha})
+	RegisterFeatureGate(FeatureGate{Name: WorkloadEncryptionTDX, State: Alpha})
 	RegisterFeatureGate(FeatureGate{Name: VSOCKGate, State: Alpha})
-	RegisterFeatureGate(FeatureGate{Name: KubevirtSeccompProfile, State: Alpha})
+	RegisterFeatureGate(FeatureGate{Name: KubevirtSeccompProfile, State: Beta})
 	RegisterFeatureGate(FeatureGate{Name: DisableMediatedDevicesHandling, State: Alpha})
 	RegisterFeatureGate(FeatureGate{Name: PersistentReservation, State: Alpha})
 	RegisterFeatureGate(FeatureGate{Name: MultiArchitecture, State: Alpha})
@@ -168,8 +181,9 @@ func init() {
 	RegisterFeatureGate(FeatureGate{Name: HostDevicesWithDRAGate, State: Alpha})
 	RegisterFeatureGate(FeatureGate{Name: DecentralizedLiveMigration, State: Alpha})
 	RegisterFeatureGate(FeatureGate{Name: DeclarativeHotplugVolumesGate, State: Alpha})
-	RegisterFeatureGate(FeatureGate{Name: VideoConfig, State: Alpha})
+	RegisterFeatureGate(FeatureGate{Name: VideoConfig, State: Beta})
 	RegisterFeatureGate(FeatureGate{Name: PanicDevicesGate, State: Beta})
 	RegisterFeatureGate(FeatureGate{Name: PasstIPStackMigration, State: Alpha})
 	RegisterFeatureGate(FeatureGate{Name: IncrementalBackupGate, State: Alpha})
+	RegisterFeatureGate(FeatureGate{Name: MigrationPriorityQueue, State: Alpha})
 }

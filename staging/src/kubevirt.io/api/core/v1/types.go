@@ -747,6 +747,8 @@ const (
 	VirtualMachineInstanceReasonSEVNotMigratable = "SEVNotLiveMigratable"
 	// Reason means that VMI is not live migratable because it uses IBM Secure Execution
 	VirtualMachineInstanceReasonSecureExecutionNotMigratable = "SecureExecutionNotLiveMigratable"
+	// Reason means that VMI is not live migratable because it uses Intel Trust Domain Extensions (TDX)
+	VirtualMachineInstanceReasonTDXNotMigratable = "TDXNotLiveMigratable"
 	// Reason means that VMI is not live migratable because it uses HyperV Reenlightenment while TSC Frequency is not available
 	VirtualMachineInstanceReasonNoTSCFrequencyMigratable = "NoTSCFrequencyNotLiveMigratable"
 	// Reason means that VMI is not live migratable because it uses HyperV Reenlightenment while TSC Frequency is not available
@@ -826,6 +828,10 @@ func (m *VirtualMachineInstanceMigration) IsRunning() bool {
 	switch m.Status.Phase {
 	case MigrationFailed, MigrationPending, MigrationPhaseUnset, MigrationSucceeded, MigrationWaitingForSync, MigrationSynchronizing:
 		return false
+	case MigrationScheduling:
+		if m.IsDecentralizedSource() {
+			return false
+		}
 	}
 	return true
 }
@@ -1285,6 +1291,9 @@ const (
 	// SEVSNPLabel marks the node as capable of running workloads with SEV-SNP
 	SEVSNPLabel string = "kubevirt.io/sev-snp"
 
+	// TDXLabel marks the node as capable of running workloads with Intel TDX
+	TDXLabel string = "kubevirt.io/tdx"
+
 	// KSMEnabledLabel marks the node as KSM-handling enabled
 	KSMEnabledLabel string = "kubevirt.io/ksm-enabled"
 
@@ -1381,6 +1390,57 @@ const (
 	// DisablePCIHole64 indicates that the 64-Bit PCI hole should be disabled on a VirtualMachineInstance.
 	// This annotation might be deprecated in the future if we decided to add a struct for it.
 	DisablePCIHole64 string = "kubevirt.io/disablePCIHole64"
+
+	// EvictionSourceAnnotation indicates the origin of an api initiated eviction in the VirtualMachineInstance.
+	// This annotation might be empty if the source is not a recognized actor (an admin for example).
+	// This could be useful to distinguish evictions originated from the descheduler.
+	EvictionSourceAnnotation = "kubevirt.io/eviction-source"
+
+	// AllowAccessClusterServicesNPLabel is a pod label to be set by virt-components to indicate that they require
+	// access to cluster services otherwise blocked by the strict network policy (NP).
+	// This label will be applied to the following virt pods:
+	// - virt-operator
+	// - virt-api
+	// - virt-handler
+	// - virt-controller
+	// - virt-exportproxy
+	// - virt-synchronization-controller
+	// - the installer strategy job pod
+	// This label is then used as pod selector to create a NP to give the pod access to cluster services (apiserver/dns).
+	// An example of a NP might be:
+	// ---
+	// apiVersion: networking.k8s.io/v1
+	// kind: NetworkPolicy
+	// metadata:
+	//   name: kv-allow-egress-to-api-server
+	//   namespace: kubevirt
+	// spec:
+	//   podSelector:
+	//     matchExpressions:
+	//       - key: np.kubevirt.io/allow-access-cluster-services
+	//         operator: In
+	//         values:
+	//           - "true"
+	//   policyTypes:
+	//     - Egress
+	//   egress:
+	//     - ports:
+	//         - protocol: TCP
+	//           port: 6443
+	//     - to:
+	//         # allow talking to the kube-dns pods in kubevirt
+	//         - namespaceSelector:
+	//             matchLabels:
+	//               kubernetes.io/metadata.name: kube-system
+	//           podSelector:
+	//             matchLabels:
+	//               k8s-app: kube-dns
+	//       ports:
+	//         - protocol: TCP
+	//           port: dns-tcp
+	//         - protocol: UDP
+	//           port: dns
+	AllowAccessClusterServicesNPLabel string = "np.kubevirt.io/allow-access-cluster-services"
 )
 
 func NewVMI(name string, uid types.UID) *VirtualMachineInstance {
@@ -1637,6 +1697,14 @@ type VirtualMachineInstanceMigrationList struct {
 	Items           []VirtualMachineInstanceMigration `json:"items"`
 }
 
+type MigrationPriority string
+
+const (
+	PrioritySystemCritical    MigrationPriority = "system-critical"
+	PriorityUserTriggered     MigrationPriority = "user-triggered"
+	PrioritySystemMaintenance MigrationPriority = "system-maintenance"
+)
+
 type VirtualMachineInstanceMigrationSpec struct {
 	// The name of the VMI to perform the migration on. VMI must exist in the migration objects namespace
 	VMIName string `json:"vmiName,omitempty" valid:"required"`
@@ -1654,6 +1722,9 @@ type VirtualMachineInstanceMigrationSpec struct {
 	SendTo *VirtualMachineInstanceMigrationSource `json:"sendTo,omitempty"`
 	// If receieve is specified, this VirtualMachineInstanceMigration will be considered the target
 	Receive *VirtualMachineInstanceMigrationTarget `json:"receive,omitempty"`
+	// Priority of the migration. This can be one of `system-critical`, `user-triggered`, `system-maintenance`.
+	// +optional
+	Priority *MigrationPriority `json:"priority,omitempty"`
 }
 
 type VirtualMachineInstanceMigrationSource struct {
@@ -2934,11 +3005,12 @@ type KubeVirtConfiguration struct {
 	SupportContainerResources []SupportContainerResources `json:"supportContainerResources,omitempty"`
 
 	// deprecated
-	SupportedGuestAgentVersions    []string                          `json:"supportedGuestAgentVersions,omitempty"`
-	MemBalloonStatsPeriod          *uint32                           `json:"memBalloonStatsPeriod,omitempty"`
-	PermittedHostDevices           *PermittedHostDevices             `json:"permittedHostDevices,omitempty"`
-	MediatedDevicesConfiguration   *MediatedDevicesConfiguration     `json:"mediatedDevicesConfiguration,omitempty"`
-	MinCPUModel                    string                            `json:"minCPUModel,omitempty"`
+	SupportedGuestAgentVersions  []string                      `json:"supportedGuestAgentVersions,omitempty"`
+	MemBalloonStatsPeriod        *uint32                       `json:"memBalloonStatsPeriod,omitempty"`
+	PermittedHostDevices         *PermittedHostDevices         `json:"permittedHostDevices,omitempty"`
+	MediatedDevicesConfiguration *MediatedDevicesConfiguration `json:"mediatedDevicesConfiguration,omitempty"`
+	// deprecated
+	DeprecatedMinCPUModel          string                            `json:"minCPUModel,omitempty"`
 	ObsoleteCPUModels              map[string]bool                   `json:"obsoleteCPUModels,omitempty"`
 	VirtualMachineInstancesPerNode *int                              `json:"virtualMachineInstancesPerNode,omitempty"`
 	APIConfiguration               *ReloadableComponentConfiguration `json:"apiConfiguration,omitempty"`
